@@ -6,6 +6,8 @@ $dotenv->load();
 session_start();
 use App\Auth;
 use App\Database;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
 
 $auth = new Auth();
 $user = $auth->getUser();
@@ -18,62 +20,115 @@ if (!$user) {
 $db = Database::getInstance()->getConnection();
 $message = '';
 
+// Handle Test Email (AJAX)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'test_email') {
+    header('Content-Type: application/json');
+    $smtp_id = $_POST['smtp_config_id'];
+    $to = $_POST['test_email'];
+    $subject = $_POST['subject'];
+    $body = $_POST['body'];
+    $from_email = $_POST['from_email'];
+    $from_name = $_POST['from_name'];
+
+    try {
+        $stmt = $db->prepare("SELECT * FROM smtp_configs WHERE id = ? AND user_id = ?");
+        $stmt->execute([$smtp_id, $user['id']]);
+        $config = $stmt->fetch();
+
+        if (!$config) {
+            echo json_encode(['success' => false, 'message' => 'Invalid SMTP Config']);
+            exit;
+        }
+
+        $mail = new PHPMailer(true);
+        $mail->isSMTP();
+        $mail->Host = $config['host'];
+        $mail->SMTPAuth = true;
+        $mail->Username = $config['username'];
+        $mail->Password = $config['password'];
+        $mail->SMTPSecure = 'tls'; // Assuming TLS for now, should be in DB
+        $mail->Port = $config['port'];
+
+        $mail->setFrom($from_email, $from_name);
+        $mail->addAddress($to);
+        $mail->isHTML(true);
+        $mail->Subject = $subject;
+        $mail->Body = $body;
+
+        $mail->send();
+        echo json_encode(['success' => true, 'message' => 'Test email sent successfully!']);
+    }
+    catch (Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Mailer Error: ' . $mail->ErrorInfo]);
+    }
+    exit; // Stop execution for AJAX
+}
+
 // Fetch SMTP Configs
 $stmt = $db->prepare("SELECT * FROM smtp_configs WHERE user_id = ?");
 $stmt->execute([$user['id']]);
 $smtp_configs = $stmt->fetchAll();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Fetch Email Lists
+$stmt = $db->prepare("
+    SELECT el.*, (SELECT COUNT(*) FROM email_list_entries ele WHERE ele.list_id = el.id) as entry_count
+    FROM email_lists el WHERE el.user_id = ?
+");
+$stmt->execute([$user['id']]);
+$email_lists = $stmt->fetchAll();
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
     $name = $_POST['name'];
     $smtp_id = $_POST['smtp_config_id'];
     $subject = $_POST['subject'];
     $body = $_POST['body'];
     $start_time = $_POST['start_time'];
     $send_rate = $_POST['send_rate'];
+    $from_email = $_POST['from_email'];
+    $from_name = $_POST['from_name'];
 
-    // Check credits/Validation could go here
+    // Collect recipient emails from either CSV upload or saved list
+    $emails = [];
+    $recipient_source = $_POST['recipient_source'] ?? 'csv';
 
-    // Basic CSV parsing for recipients
-    if (isset($_FILES['recipient_list']) && $_FILES['recipient_list']['error'] == 0) {
+    if ($recipient_source === 'list' && !empty($_POST['email_list_id'])) {
+        // Load from saved email list
+        $list_id = (int)$_POST['email_list_id'];
+        $stmt = $db->prepare("SELECT email FROM email_list_entries WHERE list_id = ? AND list_id IN (SELECT id FROM email_lists WHERE user_id = ?)");
+        $stmt->execute([$list_id, $user['id']]);
+        while ($row = $stmt->fetch()) {
+            $emails[] = $row['email'];
+        }
+    }
+    elseif (isset($_FILES['recipient_list']) && $_FILES['recipient_list']['error'] == 0) {
+        // CSV upload
         $file = fopen($_FILES['recipient_list']['tmp_name'], 'r');
-        $emails = [];
         while (($line = fgetcsv($file)) !== FALSE) {
-            // Assuming email is the first column
-            if (filter_var($line[0], FILTER_VALIDATE_EMAIL)) {
-                $emails[] = $line[0];
+            foreach ($line as $cell) {
+                if (filter_var(trim($cell), FILTER_VALIDATE_EMAIL)) {
+                    $emails[] = trim($cell);
+                }
             }
         }
         fclose($file);
+    }
 
-        if (count($emails) > 0) {
-            // Create Campaign
-            $stmt = $db->prepare("INSERT INTO campaigns (user_id, name, status, start_time, send_rate, smtp_config_id, subject, body) VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?)");
-            $stmt->execute([$user['id'], $name, $start_time, $send_rate, $smtp_id, $subject, $body]);
-            $campaign_id = $db->lastInsertId();
+    if (count($emails) > 0) {
+        // Create Campaign
+        $stmt = $db->prepare("INSERT INTO campaigns (user_id, name, status, start_time, send_rate, smtp_config_id, subject, body, from_email, from_name) VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$user['id'], $name, $start_time, $send_rate, $smtp_id, $subject, $body, $from_email, $from_name]);
+        $campaign_id = $db->lastInsertId();
 
-            // Add to Queue
-            $stmt = $db->prepare("INSERT INTO email_queue (campaign_id, recipient_email, status) VALUES (?, ?, 'pending')");
-            foreach ($emails as $email) {
-                $stmt->execute([$campaign_id, $email]);
-            }
-
-            // Allow saving body/subject - For simplicity, assumed to be part of campaign or a separate 'templates' table. 
-            // In this quick prototype, I'll add body/subject columns to campaign table dynamically or just save it to a file?
-            // Let's modify the campaign table to hold subject/body or create a new column now.
-            // For now, I'll just save it to a separate 'campaign_contents' table or update the schema.
-            // Updating schema is cleaner.
-            // Schema updated in setup_db.php, so we just insert subject/body if needed during creation or update here
-            // Note: The INSERT above didn't include subject/body. Let's fix the INSERT instead.
-
-            $message = "Campaign created with " . count($emails) . " recipients.";
-
+        // Add to Queue
+        $stmt = $db->prepare("INSERT INTO email_queue (campaign_id, recipient_email, status) VALUES (?, ?, 'pending')");
+        foreach ($emails as $email) {
+            $stmt->execute([$campaign_id, $email]);
         }
-        else {
-            $message = "No valid emails found in CSV.";
-        }
+
+        $message = "Campaign created with " . count($emails) . " recipients.";
     }
     else {
-        $message = "Please upload a CSV file.";
+        $message = "No valid emails found. Please upload a CSV or select an email list.";
     }
 }
 ?>
@@ -85,12 +140,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Create Campaign - Ethical Bulk Sender</title>
     <link rel="stylesheet" href="assets/css/style.css">
+    <!-- Quill CSS -->
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <style>
+        .split-view {
+            display: flex;
+            gap: 20px;
+        }
+
+        .split-view>div {
+            flex: 1;
+        }
+
+        .editor-container {
+            height: 300px;
+            background: white;
+        }
+
+        .preview-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .preview-content {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            width: 80%;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container">
-        <header style="margin-bottom: 20px;">
-            <h1 style="color: var(--primary-color);">Create Campaign</h1>
+    <div class="container" style="max-width: 1000px;">
+        <header style="margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h1 style="color: var(--primary-color); margin: 0;">Create Campaign</h1>
             <a href="dashboard.php" class="btn btn-secondary">Back to Dashboard</a>
         </header>
 
@@ -102,39 +196,172 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 endif; ?>
 
         <div class="card">
-            <form method="POST" enctype="multipart/form-data">
-                <label>Campaign Name</label>
-                <input type="text" name="name" required>
+            <form method="POST" enctype="multipart/form-data" id="campaignForm">
+                <div class="split-view">
+                    <div>
+                        <label>Campaign Name</label>
+                        <input type="text" name="name" required placeholder="My Newsletter">
 
-                <label>SMTP Configuration</label>
-                <select name="smtp_config_id" required>
-                    <?php foreach ($smtp_configs as $config): ?>
-                    <option value="<?php echo $config['id']; ?>">
-                        <?php echo htmlspecialchars($config['host'] . ' (' . $config['username'] . ')'); ?>
-                    </option>
-                    <?php
+                        <label>SMTP Configuration</label>
+                        <select name="smtp_config_id" id="smtp_config_id" required>
+                            <?php foreach ($smtp_configs as $config): ?>
+                            <option value="<?php echo $config['id']; ?>">
+                                <?php echo htmlspecialchars($config['host'] . ' (' . $config['username'] . ')'); ?>
+                            </option>
+                            <?php
 endforeach; ?>
-                </select>
+                        </select>
+                        <p style="font-size: 0.8em; color: #666;"><a href="smtp_configs.php">Manage SMTP Configs</a></p>
+
+                        <label>Send Rate (Emails per Recipient per Hour)</label>
+                        <input type="number" name="send_rate" value="100" min="1" required>
+                        <p style="font-size: 0.8em; color: #666;">Each recipient will receive this many emails per hour.
+                        </p>
+
+                        <label>Start Time</label>
+                        <input type="datetime-local" name="start_time" required
+                            value="<?php echo date('Y-m-d\TH:i'); ?>">
+                    </div>
+                    <div>
+                        <label>From Name</label>
+                        <input type="text" name="from_name" id="from_name" required placeholder="John Doe">
+
+                        <label>From Email</label>
+                        <input type="email" name="from_email" id="from_email" required placeholder="john@example.com">
+
+                        <label>Recipients</label>
+                        <div style="margin: 8px 0;">
+                            <label style="font-weight: normal; font-size: 13px; margin-right: 15px;">
+                                <input type="radio" name="recipient_source" value="list"
+                                    onchange="toggleRecipientSource()" checked> Use Saved List
+                            </label>
+                            <label style="font-weight: normal; font-size: 13px;">
+                                <input type="radio" name="recipient_source" value="csv"
+                                    onchange="toggleRecipientSource()"> Upload CSV
+                            </label>
+                        </div>
+                        <div id="source-list">
+                            <select name="email_list_id" id="email_list_id" style="width: 100%;">
+                                <option value="">— Select an email list —</option>
+                                <?php foreach ($email_lists as $el): ?>
+                                <option value="<?php echo $el['id']; ?>">
+                                    <?php echo htmlspecialchars($el['name'] . ' (' . $el['entry_count'] . ' emails)'); ?>
+                                </option>
+                                <?php
+endforeach; ?>
+                            </select>
+                            <p style="font-size: 0.8em; color: #666;"><a href="email_lists.php">Manage Email Lists</a>
+                            </p>
+                        </div>
+                        <div id="source-csv" style="display: none;">
+                            <input type="file" name="recipient_list" accept=".csv"
+                                style="border: none; padding: 10px 0;">
+                            <p style="font-size: 0.8em; color: #666;">CSV should contain emails in the first column.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
 
                 <label>Email Subject</label>
-                <input type="text" name="subject" required>
+                <input type="text" name="subject" id="subject" required placeholder="Subject Line">
 
-                <label>Email Body (HTML supported)</label>
-                <textarea name="body" rows="10" required></textarea>
+                <label>Email Body</label>
+                <div id="editor" class="editor-container"></div>
+                <input type="hidden" name="body" id="body">
 
-                <label>Recipient List (CSV)</label>
-                <input type="file" name="recipient_list" accept=".csv" required style="border: none; padding: 10px 0;">
-
-                <label>Start Time</label>
-                <input type="datetime-local" name="start_time" required>
-
-                <label>Send Rate (Emails per Hour)</label>
-                <input type="number" name="send_rate" value="100" min="1" required>
-
-                <button type="submit" class="btn">Schedule Campaign</button>
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button type="submit" class="btn">Schedule Campaign</button>
+                    <button type="button" class="btn btn-secondary" onclick="showPreview()">Preview</button>
+                    <button type="button" class="btn btn-secondary" onclick="showTestEmail()">Send Test</button>
+                </div>
             </form>
         </div>
     </div>
+
+    <!-- Preview Modal -->
+    <div id="previewModal" class="preview-modal">
+        <div class="preview-content">
+            <h2 style="margin-top: 0;">Email Preview</h2>
+            <div style="border-bottom: 1px solid #ddd; padding-bottom: 10px; margin-bottom: 10px;">
+                <strong>From:</strong> <span id="previewFrom"></span><br>
+                <strong>Subject:</strong> <span id="previewSubject"></span>
+            </div>
+            <div id="previewBody" style="border: 1px solid #ddd; padding: 15px; background: #f9f9f9;"></div>
+            <div style="margin-top: 20px; text-align: right;">
+                <button class="btn btn-secondary" onclick="hidePreview()">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
+    <script>
+        function toggleRecipientSource() {
+            var source = document.querySelector('input[name="recipient_source"]:checked').value;
+            document.getElementById('source-list').style.display = source === 'list' ? 'block' : 'none';
+            document.getElementById('source-csv').style.display = source === 'csv' ? 'block' : 'none';
+        }
+
+        var quill = new Quill('#editor', {
+            theme: 'snow',
+            modules: {
+                toolbar: [
+                    ['bold', 'italic', 'underline', 'strike'],
+                    ['blockquote', 'code-block'],
+                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
+                    [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
+                    [{ 'color': [] }, { 'background': [] }],
+                    ['link', 'image'],
+                    ['clean']
+                ]
+            }
+        });
+
+        var form = document.querySelector('form');
+        form.onsubmit = function () {
+            var body = document.querySelector('input[name=body]');
+            body.value = quill.root.innerHTML;
+        };
+
+        function showPreview() {
+            document.getElementById('previewFrom').innerText = document.getElementById('from_name').value + ' <' + document.getElementById('from_email').value + '>';
+            document.getElementById('previewSubject').innerText = document.getElementById('subject').value;
+            document.getElementById('previewBody').innerHTML = quill.root.innerHTML;
+            document.getElementById('previewModal').style.display = 'flex';
+        }
+
+        function hidePreview() {
+            document.getElementById('previewModal').style.display = 'none';
+        }
+
+        function showTestEmail() {
+            var email = prompt("Enter email address to send test to:");
+            if (email) {
+                var formData = new FormData();
+                formData.append('action', 'test_email');
+                formData.append('smtp_config_id', document.getElementById('smtp_config_id').value);
+                formData.append('test_email', email);
+                formData.append('subject', '[TEST] ' + document.getElementById('subject').value);
+                formData.append('body', quill.root.innerHTML);
+                formData.append('from_email', document.getElementById('from_email').value);
+                formData.append('from_name', document.getElementById('from_name').value);
+
+                fetch('create_campaign.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                    })
+                    .catch(error => {
+                        alert('Error sending test email.');
+                        console.error(error);
+                    });
+            }
+        }
+    </script>
 </body>
 
 </html>

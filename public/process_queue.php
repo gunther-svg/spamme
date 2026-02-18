@@ -79,8 +79,10 @@ foreach ($campaigns as $campaign) {
         $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
         $mail->Port = $campaign['port'];
 
-        // Sender info (using SMTP username as from for now, often required)
-        $mail->setFrom($campaign['username'], 'Bulk Sender');
+        // Use Campaign From Address if available, otherwise use SMTP config default
+        $fromEmail = !empty($campaign['from_email']) ? $campaign['from_email'] : $campaign['username'];
+        $fromName = !empty($campaign['from_name']) ? $campaign['from_name'] : 'Bulk Sender';
+        $mail->setFrom($fromEmail, $fromName);
 
         $mail->Subject = $campaign['subject'];
         $mail->Body = $campaign['body'];

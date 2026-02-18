@@ -60,6 +60,10 @@ endif; ?>
             <form method="POST">
                 <input type="email" name="email" placeholder="Email" required>
                 <input type="password" name="password" placeholder="Password" required>
+                <div style="text-align: right; margin-bottom: 10px;">
+                    <a href="forgot_password.php" style="color: var(--primary-color); text-decoration: none;">Forgot
+                        Password?</a>
+                </div>
                 <button type="submit" name="login" class="btn" style="width: 100%;">Login</button>
             </form>
 

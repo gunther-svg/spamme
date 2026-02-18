@@ -23,25 +23,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment'])) {
     $method = $_POST['method'];
 
     // File Upload handling
+    // File Upload handling
     $target_dir = "../uploads/proofs/";
     if (!file_exists($target_dir)) {
-        mkdir($target_dir, 0777, true);
+        if (!mkdir($target_dir, 0777, true)) {
+            $message = "Failed to create upload directory.";
+        }
     }
 
-    $file_name = time() . '_' . basename($_FILES["proof_file"]["name"]);
-    $target_file = $target_dir . $file_name;
-
-    if (move_uploaded_file($_FILES["proof_file"]["tmp_name"], $target_file)) {
-        $stmt = $db->prepare("INSERT INTO transactions (user_id, amount, method, proof_file, status) VALUES (?, ?, ?, ?, 'pending')");
-        if ($stmt->execute([$user['id'], $amount, $method, $target_file])) {
-            $message = "Payment request submitted successfully. Waiting for admin approval.";
+    if (empty($message)) {
+        if ($_FILES['proof_file']['error'] !== UPLOAD_ERR_OK) {
+            switch ($_FILES['proof_file']['error']) {
+                case UPLOAD_ERR_INI_SIZE:
+                case UPLOAD_ERR_FORM_SIZE:
+                    $message = "File is too large. Max size is " . ini_get('upload_max_filesize');
+                    break;
+                case UPLOAD_ERR_NO_FILE:
+                    $message = "No file uploaded.";
+                    break;
+                default:
+                    $message = "File upload error code: " . $_FILES['proof_file']['error'];
+            }
         }
         else {
-            $message = "Database error.";
+            $file_name = time() . '_' . basename($_FILES["proof_file"]["name"]);
+            $target_file = $target_dir . $file_name;
+
+            if (move_uploaded_file($_FILES["proof_file"]["tmp_name"], $target_file)) {
+                $stmt = $db->prepare("INSERT INTO transactions (user_id, amount, method, proof_file, status) VALUES (?, ?, ?, ?, 'pending')");
+                if ($stmt->execute([$user['id'], $amount, $method, $target_file])) {
+                    $message = "Payment request submitted successfully. Waiting for admin approval.";
+
+                    $mailer = new \App\SystemMailer();
+                    $mailer->sendDepositNotification($user['email'], $amount, $method);
+                    $success = true; // Flag for styling
+                }
+                else {
+                    $message = "Database error.";
+                }
+            }
+            else {
+                $message = "Error moving uploaded file. Check permissions.";
+            }
         }
-    }
-    else {
-        $message = "Error uploading file.";
     }
 }
 ?>
@@ -127,6 +151,10 @@ endif; ?>
             <button type="submit" name="submit_payment" class="btn">Submit Payment Request</button>
         </form>
     </div>
+    </div>
+</body>
+
+</html>iv>
     </div>
 </body>
 
