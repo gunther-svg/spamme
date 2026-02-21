@@ -99,32 +99,58 @@ while (true) {
                 continue;
             }
 
-            $send_rate = (int)$campaign['send_rate']; // emails per recipient per hour
+            $send_rate = (int)$campaign['send_rate'];
+            $rate_type = $campaign['rate_type'] ?? 'recipient_hour';
+            $batch_delay = (int)($campaign['batch_delay'] ?? 0);
+
+            // If using a global rate limit, we check it per campaign first
+            $global_remaining = PHP_INT_MAX;
+            if ($rate_type === 'global_hour') {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM email_sent_log WHERE campaign_id = ? AND sent_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+                $stmt->execute([$campaign['id']]);
+                $global_sent = (int)$stmt->fetchColumn();
+                $global_remaining = max(0, $send_rate - $global_sent);
+            }
+            elseif ($rate_type === 'global_minute') {
+                $stmt = $db->prepare("SELECT COUNT(*) FROM email_sent_log WHERE campaign_id = ? AND sent_at >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)");
+                $stmt->execute([$campaign['id']]);
+                $global_sent = (int)$stmt->fetchColumn();
+                $global_remaining = max(0, $send_rate - $global_sent);
+            }
+
+            if ($global_remaining <= 0) {
+                // Global rate limit hit for this cycle, skip this campaign for now
+                continue;
+            }
+
+            $campaign_sends_this_cycle = 0;
 
             foreach ($recipients as $recipient) {
-                if ($campaign['credits'] <= 0)
+                if ($campaign['credits'] <= 0 || $campaign_sends_this_cycle >= $global_remaining) {
                     break;
+                }
 
                 // Mark as active if still pending
                 if ($recipient['status'] === 'pending') {
                     $db->prepare("UPDATE email_queue SET status = 'active' WHERE id = ?")->execute([$recipient['id']]);
                 }
 
-                // Count how many emails sent to THIS recipient in the last hour
-                $stmt = $db->prepare("
-                    SELECT COUNT(*) FROM email_sent_log 
-                    WHERE queue_id = ? AND sent_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
-                ");
-                $stmt->execute([$recipient['id']]);
-                $sent_this_hour = (int)$stmt->fetchColumn();
+                $recipient_remaining = 1; // Default to 1 send per recipient per cycle unless recipient_hour is used
 
-                $remaining = $send_rate - $sent_this_hour;
-                if ($remaining <= 0) {
-                    continue; // Rate limit reached for this recipient this hour
+                if ($rate_type === 'recipient_hour') {
+                    // Count how many emails sent to THIS recipient in the last hour
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM email_sent_log WHERE queue_id = ? AND sent_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)");
+                    $stmt->execute([$recipient['id']]);
+                    $sent_this_hour = (int)$stmt->fetchColumn();
+                    $recipient_remaining = max(0, $send_rate - $sent_this_hour);
+
+                    if ($recipient_remaining <= 0) {
+                        continue; // Rate limit reached for this recipient this hour
+                    }
                 }
 
-                // Send up to BATCH_PER_CYCLE emails to this recipient in this cycle
-                $to_send = min($remaining, $BATCH_PER_CYCLE, $campaign['credits']);
+                // Calculate how many to send to this specific recipient
+                $to_send = min($recipient_remaining, $BATCH_PER_CYCLE, $campaign['credits'], $global_remaining - $campaign_sends_this_cycle);
 
                 for ($i = 0; $i < $to_send; $i++) {
                     try {
@@ -139,9 +165,14 @@ while (true) {
                         // Deduct credit
                         $db->prepare("UPDATE users SET credits = credits - 1 WHERE id = ?")->execute([$campaign['user_id']]);
                         $campaign['credits']--;
+                        $campaign_sends_this_cycle++;
 
-                        $send_num = $sent_this_hour + $i + 1;
-                        daemon_log("Sent to {$recipient['recipient_email']} (campaign:{$campaign['id']}, send #{$send_num}/{$send_rate}/hr)");
+                        daemon_log("Sent to {$recipient['recipient_email']} (campaign:{$campaign['id']}, rate:{$rate_type})");
+
+                        // Apply batch delay if configured (and not the very last email of the cycle)
+                        if ($batch_delay > 0) {
+                            sleep($batch_delay);
+                        }
 
                     }
                     catch (Exception $e) {

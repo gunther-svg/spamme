@@ -20,6 +20,24 @@ try {
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbname`");
     $pdo->exec("USE `$dbname`");
 
+    // Admins
+    $pdo->exec("CREATE TABLE IF NOT EXISTS admins (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    $adminEmail = $_ENV['SMTP_FROM'];
+    $adminPassword = password_hash('admin123', PASSWORD_DEFAULT);
+
+    // Insert default admin if no admins exist
+    $stmt = $pdo->query("SELECT COUNT(*) FROM admins");
+    if ($stmt->fetchColumn() == 0) {
+        $stmt = $pdo->prepare("INSERT INTO admins (email, password) VALUES (?, ?)");
+        $stmt->execute([$adminEmail, $adminPassword]);
+    }
+
     // Users
     // Added reset_token, reset_expires, verification_token
     $pdo->exec("CREATE TABLE IF NOT EXISTS users (
@@ -82,6 +100,8 @@ try {
         status ENUM('draft', 'scheduled', 'running', 'completed', 'paused') DEFAULT 'draft',
         start_time TIMESTAMP NULL,
         send_rate INT DEFAULT 100,
+        rate_type ENUM('recipient_hour', 'global_hour', 'global_minute') DEFAULT 'recipient_hour',
+        batch_delay INT DEFAULT 0,
         smtp_config_id INT,
         from_email VARCHAR(255),
         from_name VARCHAR(255),
@@ -91,6 +111,17 @@ try {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (smtp_config_id) REFERENCES smtp_configs(id) ON DELETE SET NULL
     )");
+
+    try {
+        $pdo->exec("ALTER TABLE campaigns ADD COLUMN rate_type ENUM('recipient_hour', 'global_hour', 'global_minute') DEFAULT 'recipient_hour'");
+    }
+    catch (Exception $e) {
+    }
+    try {
+        $pdo->exec("ALTER TABLE campaigns ADD COLUMN batch_delay INT DEFAULT 0");
+    }
+    catch (Exception $e) {
+    }
 
     try {
         $pdo->exec("ALTER TABLE campaigns ADD COLUMN from_email VARCHAR(255)");

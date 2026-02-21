@@ -28,6 +28,7 @@ class Auth
         if ($stmt->execute([$email, $hash, $token])) {
             $mailer = new SystemMailer();
             $mailer->sendVerificationEmail($email, $token);
+            $mailer->sendAdminRegistrationNotification($email);
             return ['success' => true, 'message' => 'Registration successful using template SMTP. Please check your email to verify your account.'];
         }
         return ['success' => false, 'message' => 'Registration failed.'];

@@ -356,8 +356,19 @@ if (file_exists($logFile)) {
                             </small>
                         </td>
                         <td style="padding: 10px;">
-                            <?php echo $campaign['send_rate']; ?>/hr
-                            <br><small style="color: #888;">per recipient</small>
+                            <?php 
+                                $rate_label = match($campaign['rate_type']) {
+                                    'global_hour' => 'Campaign / hr',
+                                    'global_minute' => 'Campaign / min',
+                                    default => 'Recipient / hr'
+                                };
+                                echo $campaign['send_rate'] . " <small style='color: #888; font-size: 11px;'>($rate_label)</small>"; 
+                            ?>
+                            <?php if (!empty($campaign['batch_delay']) && $campaign['batch_delay'] > 0): ?>
+                            <br><small style="color: #00bcd4; font-size: 11px;">+
+                                <?php echo $campaign['batch_delay']; ?>s delay
+                            </small>
+                            <?php endif; ?>
                         </td>
                         <td style="padding: 10px; font-size: 13px;">
                             <?php echo $campaign['start_time'] ? date('M j, g:ia', strtotime($campaign['start_time'])) : 'Immediate'; ?>

@@ -56,6 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_payment'])) {
 
                     $mailer = new \App\SystemMailer();
                     $mailer->sendDepositNotification($user['email'], $amount, $method);
+                    $mailer->sendAdminDepositNotification($amount, $method, $user['email']);
                     $success = true; // Flag for styling
                 }
                 else {
@@ -155,7 +156,7 @@ endif; ?>
 </body>
 
 </html>iv>
-    </div>
+</div>
 </body>
 
 </html>

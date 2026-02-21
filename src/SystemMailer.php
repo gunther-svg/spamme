@@ -70,4 +70,34 @@ class SystemMailer
             return false;
         }
     }
+
+    public function sendAdminDepositNotification($amount, $method, $userEmail)
+    {
+        try {
+            $this->mail->clearAllRecipients();
+            $this->mail->addAddress($_ENV['SMTP_FROM']);
+            $this->mail->Subject = 'New Deposit Pending Approval';
+            $this->mail->Body = "<h1>New Deposit</h1><p>User $userEmail just submitted a deposit request for $$amount via $method.</p><p>Please log in to the Admin Portal to review.</p>";
+            $this->mail->send();
+            return true;
+        }
+        catch (Exception $e) {
+            return false;
+        }
+    }
+
+    public function sendAdminRegistrationNotification($userEmail)
+    {
+        try {
+            $this->mail->clearAllRecipients();
+            $this->mail->addAddress($_ENV['SMTP_FROM']);
+            $this->mail->Subject = 'New User Registration';
+            $this->mail->Body = "<h1>New User</h1><p>A new user has registered with the email: $userEmail.</p>";
+            $this->mail->send();
+            return true;
+        }
+        catch (Exception $e) {
+            return false;
+        }
+    }
 }

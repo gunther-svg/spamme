@@ -84,6 +84,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
     $body = $_POST['body'];
     $start_time = $_POST['start_time'];
     $send_rate = $_POST['send_rate'];
+    $rate_type = $_POST['rate_type'] ?? 'recipient_hour';
+    $batch_delay = (int)($_POST['batch_delay'] ?? 0);
     $from_email = $_POST['from_email'];
     $from_name = $_POST['from_name'];
 
@@ -115,8 +117,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
 
     if (count($emails) > 0) {
         // Create Campaign
-        $stmt = $db->prepare("INSERT INTO campaigns (user_id, name, status, start_time, send_rate, smtp_config_id, subject, body, from_email, from_name) VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?)");
-        $stmt->execute([$user['id'], $name, $start_time, $send_rate, $smtp_id, $subject, $body, $from_email, $from_name]);
+        $stmt = $db->prepare("INSERT INTO campaigns (user_id, name, status, start_time, send_rate, rate_type, batch_delay, smtp_config_id, subject, body, from_email, from_name) VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->execute([$user['id'], $name, $start_time, $send_rate, $rate_type, $batch_delay, $smtp_id, $subject, $body, $from_email, $from_name]);
         $campaign_id = $db->lastInsertId();
 
         // Add to Queue
@@ -213,10 +215,38 @@ endforeach; ?>
                         </select>
                         <p style="font-size: 0.8em; color: #666;"><a href="smtp_configs.php">Manage SMTP Configs</a></p>
 
-                        <label>Send Rate (Emails per Recipient per Hour)</label>
-                        <input type="number" name="send_rate" value="100" min="1" required>
-                        <p style="font-size: 0.8em; color: #666;">Each recipient will receive this many emails per hour.
-                        </p>
+                        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+
+                        <label>Sending Speed / Rate Limit</label>
+                        <div
+                            style="background: #f9f9f9; padding: 15px; border-radius: 6px; border: 1px solid #eee; margin-bottom: 15px;">
+                            <label style="font-weight: normal; font-size: 13px; display: block; margin-bottom: 8px;">
+                                <input type="radio" name="rate_type" value="recipient_hour" checked>
+                                <strong>Per Recipient per Hour</strong> (Current standard — Good for drip campaigns)
+                            </label>
+                            <label style="font-weight: normal; font-size: 13px; display: block; margin-bottom: 8px;">
+                                <input type="radio" name="rate_type" value="global_hour">
+                                <strong>Global per Hour</strong> (Good for IP warmup or daily limits)
+                            </label>
+                            <label style="font-weight: normal; font-size: 13px; display: block; margin-bottom: 12px;">
+                                <input type="radio" name="rate_type" value="global_minute">
+                                <strong>Global per Minute</strong> (Fast sending on established IPs)
+                            </label>
+
+                            <div style="display: flex; gap: 15px;">
+                                <div style="flex: 1;">
+                                    <label style="font-size: 13px;">Emails Amount</label>
+                                    <input type="number" name="send_rate" value="100" min="1" required
+                                        style="margin-top: 4px;">
+                                </div>
+                                <div style="flex: 1;">
+                                    <label style="font-size: 13px;">Delay Between Emails (sec)</label>
+                                    <input type="number" name="batch_delay" value="0" min="0" style="margin-top: 4px;">
+                                </div>
+                            </div>
+                            <p style="font-size: 11px; color: #666; margin: 5px 0 0;">(Optional) A delay helps avoid
+                                triggering spam filters during fast sends.</p>
+                        </div>
 
                         <label>Start Time</label>
                         <input type="datetime-local" name="start_time" required
