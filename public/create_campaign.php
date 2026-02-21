@@ -77,6 +77,11 @@ $stmt = $db->prepare("
 $stmt->execute([$user['id']]);
 $email_lists = $stmt->fetchAll();
 
+// Fetch Email Templates
+$stmt = $db->prepare("SELECT * FROM email_templates WHERE user_id = ? ORDER BY name ASC");
+$stmt->execute([$user['id']]);
+$email_templates = $stmt->fetchAll();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
     $name = $_POST['name'];
     $smtp_id = $_POST['smtp_config_id'];
@@ -296,7 +301,20 @@ endforeach; ?>
                 <label>Email Subject</label>
                 <input type="text" name="subject" id="subject" required placeholder="Subject Line">
 
-                <label>Email Body</label>
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 5px;">
+                    <label style="margin: 0;">Email Body</label>
+                    <?php if (!empty($email_templates)): ?>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span style="font-size: 12px; color: #666;">Load Template:</span>
+                            <select id="templateSelector" onchange="loadTemplate()" style="padding: 4px; font-size: 13px; margin: 0; width: 200px;">
+                                <option value="">— Select Template —</option>
+                                <?php foreach ($email_templates as $t): ?>
+                                    <option value="<?php echo $t['id']; ?>"><?php echo htmlspecialchars($t['name']); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    <?php endif; ?>
+                </div>
                 <div id="editor" class="editor-container"></div>
                 <input type="hidden" name="body" id="body">
 
@@ -327,6 +345,22 @@ endforeach; ?>
     <!-- Scripts -->
     <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script>
+        var savedTemplates = <?php 
+            $templates_js = [];
+            foreach ($email_templates as $t) {
+                $templates_js[$t['id']] = $t['content'];
+            }
+            echo json_encode($templates_js);
+        ?>;
+
+        function loadTemplate() {
+            var selector = document.getElementById('templateSelector');
+            var templateId = selector.value;
+            if (templateId && savedTemplates[templateId]) {
+                quill.clipboard.dangerouslyPasteHTML(savedTemplates[templateId]);
+            }
+        }
+
         function toggleRecipientSource() {
             var source = document.querySelector('input[name="recipient_source"]:checked').value;
             document.getElementById('source-list').style.display = source === 'list' ? 'block' : 'none';

@@ -168,6 +168,17 @@ try {
         UNIQUE KEY unique_list_email (list_id, email)
     )");
 
+    // Email Templates
+    $pdo->exec("CREATE TABLE IF NOT EXISTS email_templates (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        content MEDIUMTEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )");
+
     // Email Queue — one row per recipient per campaign
     $pdo->exec("CREATE TABLE IF NOT EXISTS email_queue (
         id INT AUTO_INCREMENT PRIMARY KEY,

@@ -55,6 +55,7 @@ if (isset($_POST['logout'])) {
             <a href="dashboard.php" class="btn" style="margin-right: 10px;">Home</a>
             <a href="smtp_configs.php" class="btn btn-secondary" style="margin-right: 10px;">SMTP Configs</a>
             <a href="email_lists.php" class="btn btn-secondary" style="margin-right: 10px;">Email Lists</a>
+            <a href="email_templates.php" class="btn btn-secondary" style="margin-right: 10px;">Templates</a>
             <a href="buy_credits.php" class="btn btn-secondary" style="margin-right: 10px;">Buy Credits</a>
             <a href="campaigns.php" class="btn btn-secondary">Campaigns</a>
         </nav>
