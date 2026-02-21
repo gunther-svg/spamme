@@ -13,6 +13,9 @@ $dotenv->load();
 use App\Database;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use App\Settings;
+
+$cost_per_email = (int)Settings::get('cost_per_email', 1);
 
 // Write PID file so we can stop it later
 $pidFile = __DIR__ . '/daemon.pid';
@@ -50,8 +53,8 @@ while (true) {
         $campaigns = $stmt->fetchAll();
 
         foreach ($campaigns as $campaign) {
-            if ($campaign['credits'] <= 0) {
-                daemon_log("Campaign \"{$campaign['name']}\" (ID:{$campaign['id']}): No credits. Skipping.");
+            if ($campaign['credits'] < $cost_per_email) {
+                daemon_log("Campaign \"{$campaign['name']}\" (ID:{$campaign['id']}): Not enough credits. Skipping.");
                 continue;
             }
 
@@ -126,7 +129,7 @@ while (true) {
             $campaign_sends_this_cycle = 0;
 
             foreach ($recipients as $recipient) {
-                if ($campaign['credits'] <= 0 || $campaign_sends_this_cycle >= $global_remaining) {
+                if ($campaign['credits'] < $cost_per_email || $campaign_sends_this_cycle >= $global_remaining) {
                     break;
                 }
 
@@ -150,7 +153,8 @@ while (true) {
                 }
 
                 // Calculate how many to send to this specific recipient
-                $to_send = min($recipient_remaining, $BATCH_PER_CYCLE, $campaign['credits'], $global_remaining - $campaign_sends_this_cycle);
+                $max_affordable = floor($campaign['credits'] / $cost_per_email);
+                $to_send = min($recipient_remaining, $BATCH_PER_CYCLE, $max_affordable, $global_remaining - $campaign_sends_this_cycle);
 
                 for ($i = 0; $i < $to_send; $i++) {
                     try {
@@ -163,8 +167,8 @@ while (true) {
                             ->execute([$campaign['id'], $recipient['id'], $recipient['recipient_email']]);
 
                         // Deduct credit
-                        $db->prepare("UPDATE users SET credits = credits - 1 WHERE id = ?")->execute([$campaign['user_id']]);
-                        $campaign['credits']--;
+                        $db->prepare("UPDATE users SET credits = credits - ? WHERE id = ?")->execute([$cost_per_email, $campaign['user_id']]);
+                        $campaign['credits'] -= $cost_per_email;
                         $campaign_sends_this_cycle++;
 
                         daemon_log("Sent to {$recipient['recipient_email']} (campaign:{$campaign['id']}, rate:{$rate_type})");

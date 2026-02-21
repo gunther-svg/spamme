@@ -5,6 +5,7 @@ $dotenv->load();
 
 session_start();
 use App\Auth;
+use App\Settings;
 
 $auth = new Auth();
 $user = $auth->getUser();
@@ -64,7 +65,10 @@ if (isset($_POST['logout'])) {
                     <?php echo $user['credits']; ?>
                 </strong> credits available.</p>
             <p>Email Limit: <strong>
-                    <?php echo $user['credits']; ?>
+                    <?php
+$cost_per_email = max(1, (int)Settings::get('cost_per_email', 1));
+echo floor($user['credits'] / $cost_per_email);
+?>
                 </strong> emails.</p>
             <!-- Add more stats here later -->
         </div>

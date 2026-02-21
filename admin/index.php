@@ -61,7 +61,9 @@ if (isset($_GET['action']) && $_GET['action'] === 'logout') {
                     <?php if ($pendingDeposits > 0)
     echo "<span style='background:#ff4757;color:white;padding:2px 6px;border-radius:10px;font-size:12px;'>$pendingDeposits</span>"; ?>
                 </a>
-                <a href="activities.php" class="btn btn-secondary btn-small">System Activities</a>
+                <a href="activities.php" class="btn btn-secondary btn-small" style="margin-right: 10px;">System
+                    Activities</a>
+                <a href="settings.php" class="btn btn-secondary btn-small">Settings</a>
             </nav>
         </header>
 

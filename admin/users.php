@@ -73,7 +73,9 @@ $users = $db->query("SELECT * FROM users ORDER BY created_at DESC")->fetchAll();
                 <a href="users.php" class="btn btn-small" style="margin-right: 10px;">Manage Users</a>
                 <a href="deposits.php" class="btn btn-secondary btn-small" style="margin-right: 10px;">Pending
                     Deposits</a>
-                <a href="activities.php" class="btn btn-secondary btn-small">System Activities</a>
+                <a href="activities.php" class="btn btn-secondary btn-small" style="margin-right: 10px;">System
+                    Activities</a>
+                <a href="settings.php" class="btn btn-secondary btn-small">Settings</a>
             </nav>
         </header>
 

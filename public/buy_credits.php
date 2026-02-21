@@ -6,6 +6,7 @@ $dotenv->load();
 session_start();
 use App\Auth;
 use App\Database;
+use App\Settings;
 
 $auth = new Auth();
 $user = $auth->getUser();
@@ -132,7 +133,8 @@ endif; ?>
             </div>
             <div
                 style="text-align: center; margin-top: 20px; font-weight: bold; background: #e8f5e9; padding: 10px; border-radius: 4px; color: var(--primary-color);">
-                Rate: $1 = 100 Credits
+                Rate: $1 =
+                <?php echo htmlspecialchars(App\Settings::get('credits_per_dollar', 100)); ?> Credits
             </div>
         </div>
 

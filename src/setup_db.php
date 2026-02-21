@@ -20,6 +20,18 @@ try {
     $pdo->exec("CREATE DATABASE IF NOT EXISTS `$dbname`");
     $pdo->exec("USE `$dbname`");
 
+    // System Settings
+    $pdo->exec("CREATE TABLE IF NOT EXISTS system_settings (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        setting_key VARCHAR(255) UNIQUE NOT NULL,
+        setting_value VARCHAR(255) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )");
+
+    // Insert Default Settings
+    $pdo->exec("INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES ('credits_per_dollar', '100')");
+    $pdo->exec("INSERT IGNORE INTO system_settings (setting_key, setting_value) VALUES ('cost_per_email', '1')");
+
     // Admins
     $pdo->exec("CREATE TABLE IF NOT EXISTS admins (
         id INT AUTO_INCREMENT PRIMARY KEY,

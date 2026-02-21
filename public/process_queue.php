@@ -6,8 +6,10 @@ $dotenv->load();
 use App\Database;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use App\Settings;
 
 $db = Database::getInstance()->getConnection();
+$cost_per_email = (int)Settings::get('cost_per_email', 1);
 
 echo "Starting queue processing...\n";
 
@@ -26,8 +28,8 @@ $campaigns = $stmt->fetchAll();
 foreach ($campaigns as $campaign) {
     echo "Processing campaign: {$campaign['name']} (ID: {$campaign['id']})\n";
 
-    if ($campaign['credits'] <= 0) {
-        echo "User has no credits. Pausing campaign.\n";
+    if ($campaign['credits'] < $cost_per_email) {
+        echo "User has not enough credits. Pausing campaign.\n";
         // Optionally pause campaign
         continue;
     }
@@ -89,7 +91,7 @@ foreach ($campaigns as $campaign) {
         $mail->isHTML(true);
 
         foreach ($emails as $email_row) {
-            if ($campaign['credits'] <= 0)
+            if ($campaign['credits'] < $cost_per_email)
                 break;
 
             try {
@@ -102,8 +104,8 @@ foreach ($campaigns as $campaign) {
                 $db->prepare("UPDATE email_queue SET status = 'sent', sent_at = NOW() WHERE id = ?")->execute([$email_row['id']]);
 
                 // Deduct credit
-                $db->prepare("UPDATE users SET credits = credits - 1 WHERE id = ?")->execute([$campaign['user_id']]);
-                $campaign['credits']--;
+                $db->prepare("UPDATE users SET credits = credits - ? WHERE id = ?")->execute([$cost_per_email, $campaign['user_id']]);
+                $campaign['credits'] -= $cost_per_email;
 
                 $mail->clearAddresses();
 

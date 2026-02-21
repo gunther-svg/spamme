@@ -6,6 +6,7 @@ $dotenv->load();
 session_start();
 use App\AdminAuth;
 use App\Database;
+use App\Settings;
 
 $auth = new AdminAuth();
 $admin = $auth->getAdmin();
@@ -31,8 +32,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $transaction = $stmt->fetch();
 
             if ($transaction) {
-                // Rate: $1 = 100 Credits (as per buy_credits.php)
-                $creditsToAdd = floor($transaction['amount'] * 100);
+                // Rate: Dynamic Calculation
+                $creditsPerDollar = (int)Settings::get('credits_per_dollar', 100);
+                $creditsToAdd = floor($transaction['amount'] * $creditsPerDollar);
 
                 // Update transaction status
                 $stmt = $db->prepare("UPDATE transactions SET status = 'approved' WHERE id = ?");
@@ -205,4 +207,5 @@ endif; ?>
     </div>
 </body>
 
+</html>
 </html>
