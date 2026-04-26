@@ -7,6 +7,7 @@ use App\Database;
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 use App\Settings;
+use App\MailHelper;
 
 $db = Database::getInstance()->getConnection();
 $cost_per_email = (int)Settings::get('cost_per_email', 1);
@@ -88,7 +89,12 @@ foreach ($campaigns as $campaign) {
 
         $mail->Subject = $campaign['subject'];
         $mail->Body = $campaign['body'];
-        $mail->isHTML(true);
+        if (MailHelper::isHtml($campaign['body'])) {
+            $mail->isHTML(true);
+            $mail->AltBody = MailHelper::altBody($campaign['body']);
+        } else {
+            $mail->isHTML(false);
+        }
 
         foreach ($emails as $email_row) {
             if ($campaign['credits'] < $cost_per_email)

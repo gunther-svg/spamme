@@ -33,7 +33,7 @@ if (isset($_GET['delete_template'])) {
 // Create or Edit template
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_template'])) {
     $name = trim($_POST['template_name']);
-    $content = trim($_POST['template_content']);
+    $content = trim($_POST['template_html']);
     $template_id = isset($_POST['template_id']) ? (int)$_POST['template_id'] : 0;
 
     if ($name && $content) {
@@ -83,6 +83,9 @@ $templates = $stmt->fetchAll();
     <link rel="stylesheet" href="assets/css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <link href="https://unpkg.com/grapesjs/dist/css/grapes.min.css" rel="stylesheet"/>
+    <script src="https://unpkg.com/grapesjs"></script>
+    <script src="https://unpkg.com/grapesjs-plugin-mail"></script>
     <style>
         .grid {
             display: grid;
@@ -170,8 +173,8 @@ endif; ?>
 
                 <div style="margin-bottom: 15px;">
                     <label style="font-size: 13px; font-weight: 500;">Email Body</label>
-                    <input type="hidden" name="template_content">
-                    <div id="editor" style="height: 300px; background: white;">
+                    <input type="hidden" name="template_html" id="template_html">
+                    <div id="gjs" style="height:600px; border:1px solid #ddd; margin-bottom:20px;">
                         <?php echo $edit_template ? $edit_template['content'] : ''; ?>
                     </div>
                 </div>
@@ -222,28 +225,36 @@ endif; ?>
     </div>
 
     <!-- Scripts -->
-    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script>
-        var quill = new Quill('#editor', {
-            theme: 'snow',
-            modules: {
-                toolbar: [
-                    ['bold', 'italic', 'underline', 'strike'],
-                    ['blockquote', 'code-block'],
-                    [{ 'list': 'ordered' }, { 'list': 'bullet' }],
-                    [{ 'header': [1, 2, 3, 4, 5, 6, false] }],
-                    [{ 'color': [] }, { 'background': [] }],
-                    ['link', 'image'],
-                    ['video', 'clean']
-                ]
-            }
+        var editor = grapesjs.init({
+            container: '#gjs',
+            height: '600px',
+            plugins: ['gjs-plugin-mail'],
+            storageManager: { type: 'local' },
+            fromElement: false,
+            components: '<?php echo $edit_template ? addslashes($edit_template['content']) : ''; ?>',
+            style: '',
         });
 
-        var form = document.getElementById('templateForm');
-        form.onsubmit = function () {
-            var body = document.querySelector('input[name=template_content]');
-            body.value = quill.root.innerHTML;
-        };
+        var form = document.querySelector('form');
+        if (form) {
+            form.onsubmit = function () {
+                var htmlInput = document.querySelector('input[name=template_html]');
+                htmlInput.value = editor.getHtml();
+            };
+        }
+
+        function showTemplatePreview() {
+            var htmlPreview = editor.getHtml();
+            var previewModal = document.getElementById('templatePreviewModal');
+            var previewBody = document.getElementById('templatePreviewBody');
+            if (previewBody) previewBody.innerHTML = htmlPreview;
+            if (previewModal) previewModal.style.display = 'flex';
+        }
+        function hideTemplatePreview() {
+            var previewModal = document.getElementById('templatePreviewModal');
+            if (previewModal) previewModal.style.display = 'none';
+        }
     </script>
 </body>
 

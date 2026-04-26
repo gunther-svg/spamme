@@ -3,6 +3,7 @@ namespace App;
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use App\MailHelper;
 
 class SystemMailer
 {
@@ -20,7 +21,7 @@ class SystemMailer
             $this->mail->SMTPSecure = $_ENV['SMTP_ENCRYPTION'];
             $this->mail->Port = $_ENV['SMTP_PORT'];
             $this->mail->setFrom($_ENV['SMTP_FROM'], 'Bulk Sender System');
-            $this->mail->isHTML(true);
+            // Do not force isHTML here; set per-message based on content
         }
         catch (Exception $e) {
         // Log error
@@ -31,9 +32,21 @@ class SystemMailer
     {
         try {
             $link = $_ENV['APP_URL'] . "/verify.php?token=" . $token;
+            $body = "<h1>Welcome!</h1><p>Please click the link below to verify your account:</p><p><a href='$link'>$link</a></p>";
+
+            $this->mail->clearAllRecipients();
             $this->mail->addAddress($email);
             $this->mail->Subject = 'Verify Your Account';
-            $this->mail->Body = "<h1>Welcome!</h1><p>Please click the link below to verify your account:</p><p><a href='$link'>$link</a></p>";
+            $this->mail->Body = $body;
+
+            $isHtml = MailHelper::isHtml($body);
+            $this->mail->isHTML($isHtml);
+            if ($isHtml) {
+                $this->mail->AltBody = MailHelper::altBody($body);
+            } else {
+                $this->mail->AltBody = '';
+            }
+
             $this->mail->send();
             return true;
         }
@@ -46,9 +59,21 @@ class SystemMailer
     {
         try {
             $link = $_ENV['APP_URL'] . "/reset_password.php?token=" . $token;
+            $body = "<h1>Password Reset</h1><p>Click the link below to reset your password:</p><p><a href='$link'>$link</a></p><p>If you did not request this, please ignore this email.</p>";
+
+            $this->mail->clearAllRecipients();
             $this->mail->addAddress($email);
             $this->mail->Subject = 'Password Reset Request';
-            $this->mail->Body = "<h1>Password Reset</h1><p>Click the link below to reset your password:</p><p><a href='$link'>$link</a></p><p>If you did not request this, please ignore this email.</p>";
+            $this->mail->Body = $body;
+
+            $isHtml = MailHelper::isHtml($body);
+            $this->mail->isHTML($isHtml);
+            if ($isHtml) {
+                $this->mail->AltBody = MailHelper::altBody($body);
+            } else {
+                $this->mail->AltBody = '';
+            }
+
             $this->mail->send();
             return true;
         }
@@ -60,9 +85,21 @@ class SystemMailer
     public function sendDepositNotification($userEmail, $amount, $method)
     {
         try {
+            $body = "<h1>Deposit Received</h1><p>We have received your deposit request of $$amount via $method.</p><p>Our team will review and approve it shortly.</p>";
+
+            $this->mail->clearAllRecipients();
             $this->mail->addAddress($userEmail);
             $this->mail->Subject = 'Deposit Received';
-            $this->mail->Body = "<h1>Deposit Received</h1><p>We have received your deposit request of $$amount via $method.</p><p>Our team will review and approve it shortly.</p>";
+            $this->mail->Body = $body;
+
+            $isHtml = MailHelper::isHtml($body);
+            $this->mail->isHTML($isHtml);
+            if ($isHtml) {
+                $this->mail->AltBody = MailHelper::altBody($body);
+            } else {
+                $this->mail->AltBody = '';
+            }
+
             $this->mail->send();
             return true;
         }
@@ -76,8 +113,18 @@ class SystemMailer
         try {
             $this->mail->clearAllRecipients();
             $this->mail->addAddress($_ENV['SMTP_FROM']);
+            $body = "<h1>New Deposit</h1><p>User $userEmail just submitted a deposit request for $$amount via $method.</p><p>Please log in to the Admin Portal to review.</p>";
             $this->mail->Subject = 'New Deposit Pending Approval';
-            $this->mail->Body = "<h1>New Deposit</h1><p>User $userEmail just submitted a deposit request for $$amount via $method.</p><p>Please log in to the Admin Portal to review.</p>";
+            $this->mail->Body = $body;
+
+            $isHtml = MailHelper::isHtml($body);
+            $this->mail->isHTML($isHtml);
+            if ($isHtml) {
+                $this->mail->AltBody = MailHelper::altBody($body);
+            } else {
+                $this->mail->AltBody = '';
+            }
+
             $this->mail->send();
             return true;
         }
@@ -91,8 +138,18 @@ class SystemMailer
         try {
             $this->mail->clearAllRecipients();
             $this->mail->addAddress($_ENV['SMTP_FROM']);
+            $body = "<h1>New User</h1><p>A new user has registered with the email: $userEmail.</p>";
             $this->mail->Subject = 'New User Registration';
-            $this->mail->Body = "<h1>New User</h1><p>A new user has registered with the email: $userEmail.</p>";
+            $this->mail->Body = $body;
+
+            $isHtml = MailHelper::isHtml($body);
+            $this->mail->isHTML($isHtml);
+            if ($isHtml) {
+                $this->mail->AltBody = MailHelper::altBody($body);
+            } else {
+                $this->mail->AltBody = '';
+            }
+
             $this->mail->send();
             return true;
         }

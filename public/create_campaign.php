@@ -149,6 +149,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['action'])) {
     <link rel="stylesheet" href="assets/css/style.css">
     <!-- Quill CSS -->
     <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+    <!-- GrapesJS CSS & JS -->
+    <link href="https://unpkg.com/grapesjs/dist/css/grapes.min.css" rel="stylesheet"/>
+    <script src="https://unpkg.com/grapesjs"></script>
+    <!-- Email plugin -->
+    <script src="https://unpkg.com/grapesjs-plugin-mail"></script>
     <style>
         .split-view {
             display: flex;
@@ -315,7 +320,7 @@ endforeach; ?>
                         </div>
                     <?php endif; ?>
                 </div>
-                <div id="editor" class="editor-container"></div>
+                <div id="gjs" style="height:600px; border:1px solid #ddd; margin-bottom:20px;"></div>
                 <input type="hidden" name="body" id="body">
 
                 <div style="margin-top: 20px; display: flex; gap: 10px;">
@@ -426,6 +431,68 @@ endforeach; ?>
             }
         }
     </script>
+    <script>
+// Initialize GrapesJS
+var editor = grapesjs.init({
+    container: '#gjs',
+    height: '600px',
+    plugins: ['gjs-plugin-mail'],
+    storageManager: { type: 'local' }, // Save/load templates locally
+    fromElement: false,
+    components: '', // Start empty or load a default template
+    style: '',
+});
+
+// Save GrapesJS HTML to hidden input on form submit
+var form = document.querySelector('form');
+form.onsubmit = function () {
+    var body = document.querySelector('input[name=body]');
+    body.value = editor.getHtml();
+};
+
+function showPreview() {
+    var fromName = document.getElementById('from_name').value;
+    var fromEmail = document.getElementById('from_email').value;
+    var subject = document.getElementById('subject').value;
+    var htmlPreview = editor.getHtml();
+
+    document.getElementById('previewFrom').innerText = fromName + ' <' + fromEmail + '>';
+    document.getElementById('previewSubject').innerText = subject;
+    document.getElementById('previewBody').innerHTML = htmlPreview;
+    document.getElementById('previewModal').style.display = 'flex';
+}
+
+function hidePreview() {
+    document.getElementById('previewModal').style.display = 'none';
+}
+
+function showTestEmail() {
+    var email = prompt("Enter email address to send test to:");
+    if (email) {
+        var formData = new FormData();
+        formData.append('action', 'test_email');
+        formData.append('smtp_config_id', document.getElementById('smtp_config_id').value);
+        formData.append('test_email', email);
+        formData.append('subject', '[TEST] ' + document.getElementById('subject').value);
+        formData.append('body', editor.getHtml());
+        formData.append('from_email', document.getElementById('from_email').value);
+        formData.append('from_name', document.getElementById('from_name').value);
+
+        fetch('create_campaign.php', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                alert(data.message);
+            })
+            .catch(error => {
+                alert('Error sending test email.');
+                console.error(error);
+            });
+    }
+}
+</script>
 </body>
 
 </html>
